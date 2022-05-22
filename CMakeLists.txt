@@ -25,3 +25,6 @@ add_executable(client
         )
 
 target_link_libraries(client ${Boost_LIBRARIES} Threads::Threads)
+
+find_package(Boost 1.40 COMPONENTS program_options REQUIRED)
+target_link_libraries(client Boost::program_options)

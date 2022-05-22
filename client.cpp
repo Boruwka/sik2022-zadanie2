@@ -3,6 +3,7 @@
 #include <boost/enable_shared_from_this.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/array.hpp>
+#include <boost/program_options.hpp>
 
 std::string global_message = "aaa";
 int serverPort1 = 11235;
@@ -137,22 +138,42 @@ private:
   boost::asio::ip::tcp::acceptor acceptor_;
 };
 
-int main()
+int main(int argc, char *argv[])
 {
-  try
-  {
-    fprintf(stderr, "tu dziala\n");
-    boost::asio::io_context io_context;
-    udp_server server1(io_context, serverPort1);    
-    fprintf(stderr, "tu dziala 2\n");
-    tcp_server server2(io_context, serverPort2);
-    io_context.run();
-  }
-  catch (std::exception& e)
-  {
-    fprintf(stderr, "wypisujemy wyjatek\n");
-    std::cerr << e.what() << std::endl;
-  }
+    boost::program_options::options_description description("App usage");
+    boost::program_options::variables_map parameter_map;
+     
+    description.add_options()
+        ("help,h", "Get help")
+        ("gui-address,d", boost::program_options::value<std::string>(), "Gui address")
+        ("playner-name,n", boost::program_options::value<std::string>(), "Player name")
+        ("port,p", boost::program_options::value<uint16_t>(), "port")
+        ("server-address,s", boost::program_options::value<std::string>(), "Server address");
 
-  return 0;
+        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(description).run(), parameter_map);
+    boost::program_options::notify(parameter_map);
+
+    if (parameter_map.count("help"))
+    {
+        fprintf(stderr, "asked for help\n");
+        std::cout << description << std::endl;
+        return 0;
+    }
+   
+    try
+    {
+        fprintf(stderr, "tu dziala\n");
+        boost::asio::io_context io_context;
+        udp_server server1(io_context, serverPort1);    
+        fprintf(stderr, "tu dziala 2\n");
+        tcp_server server2(io_context, serverPort2);
+        io_context.run();
+    }
+    catch (std::exception& e)
+    {
+        fprintf(stderr, "wypisujemy wyjatek\n");
+        std::cerr << e.what() << std::endl;
+    }
+
+    return 0;
 }
