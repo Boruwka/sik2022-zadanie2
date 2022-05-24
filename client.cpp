@@ -44,11 +44,17 @@ void handle_message_from_gui(char data[], std::size_t& length)
     // aktywne czekanie na serwer
 }
 
-void udp_server(boost::asio::io_context& io_context, unsigned short port_listening, unsigned short port_sending)
+void udp_server(boost::asio::io_context& io_context, std::string address, unsigned short port_listening, unsigned short port_sending)
 {
     fprintf(stderr, "witamy w serwerze udp\n");
-    boost::asio::ip::udp::udp::socket sock_listening(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_listening));
-    boost::asio::ip::udp::udp::socket sock_sending(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_sending));
+    boost::asio::ip::udp::udp::resolver resolver_listening(io_context);
+    boost::asio::ip::udp::udp::resolver resolver_sending(io_context);
+    boost::asio::ip::udp::udp::endpoint endpoint_listening = *(resolver_listening.resolve(address, std::to_string(port_listening)));
+    boost::asio::ip::udp::udp::endpoint endpoint_sending = *(resolver_sending.resolve(address, std::to_string(port_sending)));
+    boost::asio::ip::udp::udp::socket sock_listening(io_context, endpoint_listening);
+    boost::asio::ip::udp::udp::socket sock_sending(io_context, endpoint_sending);
+    /*boost::asio::ip::udp::udp::socket sock_listening(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_listening));
+    boost::asio::ip::udp::udp::socket sock_sending(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_sending));*/
     for (;;)
     {
         char data[max_length];
@@ -87,10 +93,13 @@ void session(boost::asio::ip::tcp::tcp::socket sock)
     }
 }
 
-void tcp_server(boost::asio::io_context& io_context, unsigned short port)
+void tcp_server(boost::asio::io_context& io_context, std::string address, unsigned short port)
 {
     fprintf(stderr, "witamy w serwerze tcp\n");
-    boost::asio::ip::tcp::tcp::acceptor a(io_context, boost::asio::ip::tcp::tcp::endpoint(boost::asio::ip::tcp::tcp::v6(), port));
+    boost::asio::ip::tcp::tcp::resolver resolver(io_context);
+    boost::asio::ip::tcp::tcp::endpoint endpoint = *(resolver.resolve(address, std::to_string(port)));
+    //boost::asio::ip::tcp::tcp::acceptor a(io_context, boost::asio::ip::tcp::tcp::endpoint(boost::asio::ip::tcp::tcp::v6(), port));
+    boost::asio::ip::tcp::tcp::acceptor a(io_context, boost::asio::ip::tcp::tcp::endpoint(endpoint));
     for (;;)
     {
         std::thread(session, a.accept()).detach();
@@ -183,19 +192,19 @@ int main(int argc, char *argv[])
 
         std::thread debug_2(debug_1);
         debug_2.detach();
-        std::thread udp_thread([port_listening_gui, port_sending_gui]()
+        std::thread udp_thread([gui_host_address, port_listening_gui, port_sending_gui]()
             {
                 boost::asio::io_context udp_io_context;
-                udp_server(udp_io_context, port_listening_gui, port_sending_gui);
+                udp_server(udp_io_context, gui_host_address, port_listening_gui, port_sending_gui);
             });
         udp_thread.detach();
 
         //std::thread udp_thread(udp_server, io_context_udp, port_listening_gui, port_sending_gui);
 
-        std::thread tcp_thread([port_server]() 
+        std::thread tcp_thread([port_server, server_host_address]() 
             {
                 boost::asio::io_context io_context_tcp;
-                tcp_server(io_context_tcp, port_server); 
+                tcp_server(io_context_tcp, server_host_address, port_server); 
             });
         tcp_thread.detach();
 
