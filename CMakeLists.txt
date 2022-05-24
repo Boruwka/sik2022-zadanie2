@@ -26,5 +26,9 @@ add_executable(client
 
 target_link_libraries(client ${Boost_LIBRARIES} Threads::Threads)
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
+#target_link_libraries(client PRIVATE Threads::Threads)
+
 find_package(Boost 1.40 COMPONENTS program_options REQUIRED)
-target_link_libraries(client Boost::program_options)
+target_link_libraries(client Boost::program_options Threads::Threads)
