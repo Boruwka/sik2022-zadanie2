@@ -8,7 +8,12 @@
 
 size_t max_length = 65536;
 
-enum class Direction 
+
+typedef BombId = uint32_t;
+typedef PlayerId = uint8_t;
+typedef Score = uint32_t;
+
+enum class Direction
 {
     Up,
     Right,
@@ -16,12 +21,224 @@ enum class Direction
     Left
 };
 
-enum class InputMessage 
+class Bomb
 {
-    PlaceBomb,
-    PlaceBlock,
-    Move //{ direction: Direction },
+public:
+    BombId id;
+    Position position;
+    uint16_t timer;
 };
+
+class Position
+{
+public:
+    uint16_t x;
+    uint16_t y;
+};
+
+class Player
+{
+public:
+    std::string name;
+    std::string address;
+    Position position;
+};
+
+// tworzymy event, żeby było wygodniej, zmieniamy nim grę
+// a potem go usuwamy, żeby nie zaśmiecać
+class Event
+{
+    public:
+    // zmienia stan gry zgodnie z otrzymanym eventem
+    virtual void changeGame(Game& game);
+};
+
+class BombPlaced : public Event
+{
+    public:
+    BombId id;
+    Position position;
+    void changeGameState(Game& game)
+    {
+        // idk, ale chyba nic się nie dzieje, bo nie musimy pamiętać, gdzie są bomby jako klient? Wgl po co jest ten komunikat? 
+    }
+};
+
+class BombExploded
+{
+    public:
+    BombId id;
+    List<PlayerId> robots_destroyed;
+
+    void changeGame(Game& game)
+    {
+        // usuwamy z listy zabitych graczy bo i tak w nowej rozgrywce dostaniemy nową listę graczy
+        for (auto id: robots_destroyed)
+        {
+            game.players.erase(id);
+        }
+    }
+};
+
+class PlayerMoved : public Event
+{
+    public:
+    PlayerId id;
+    Position position;
+
+    void changeGame(Game& game)
+    {
+        game.players[id].position = this->position;
+    }
+};
+
+class BlockPlaced : public Event
+{
+    Position position;
+    
+    void changeGame(Game& game)
+    {
+        game.blocks.insert(this->position);
+    }
+};
+
+enum class GameState
+{
+    Lobby,
+    Game
+};
+
+// usuwamy ten obiekt po użyciu, on jest tylko dla elegancji
+class ClientMessage // client to server
+{
+    ClientMessageType type;
+    Direction direction; // jeśli to move
+
+    // zwraca ile bajtów zapisało 
+    size_t serialize(char[] data)
+    {
+        if (type == ClientMessageType::Join)
+        {
+            size_t len = 1;
+            data[0] = 0;
+            len += serialize_string(data[1]);
+            return len;
+            
+        }
+        if (type == ClientMessageType::PlaceBomb)
+        {
+            data[0] = 1;
+            return 1;
+        }
+        if (type == ClientMessageType::PlaceBlock)
+        {
+            data[0] = 2;
+            return 1;
+        }
+        if (type == ClientMessageType::Move)
+        {
+            data[0] = 3;
+            size_t len = 1;
+            len += serialize_direction(this->direction, data[1])
+            return len;
+        }
+    }
+};
+
+class ServerMessage
+{
+    public:
+    
+    virtual void save_to_game(Game& game);
+};
+
+class Hello : public ServerMessage
+{
+    public:
+
+    std::string server_name;
+    uint8_t players_count;
+    uint16_t size_x;
+    uint16_t size_y;
+    uint16_t game_length;
+    uint16_t explosion_radius;
+    uint16_t bomb_timer;
+    
+    // konstruktor deserializujący
+    Hello(char data[])
+    {
+        
+    }
+
+    save_to_game()
+    {
+        
+    }
+};
+
+enum ServerMessage {
+    [0] Hello {
+        server_name: String,
+        players_count: u8,
+        size_x: u16,
+        size_y: u16,
+        game_length: u16,
+        explosion_radius: u16,
+        bomb_timer: u16,
+    },
+    [1] AcceptedPlayer {
+        id: PlayerId,
+        player: Player,
+    },
+    [2] GameStarted {
+            players: Map<PlayerId, Player>,
+    },
+    [3] Turn {
+            turn: u16,
+            events: List<Event>,
+    },
+    [4] GameEnded {
+            scores: Map<PlayerId, Score>,
+    },
+}
+
+// tworzymy ją jak otrzymamy hello od serwera
+// tu przechowujemy dane o aktualnej grze
+class Game 
+{
+    State game_state; // lobby lub game
+    std::string server_name;
+    uint8_t players_count;
+    uint16_t size_x;
+    uint16_t size_y;
+    uint16_t game_length;
+    uint16_t explosion_radius;
+    uint16_t bomb_timer;
+    std::map<PlayerId, Player> players;
+    std::list<Position> blocks;
+};
+
+
+Direction parse_direction(char[] data)
+{
+    if (data[0] == 0)
+    {
+        return Direction::Up;
+    }
+    if (data[0] == 1)
+    {
+        return Direction::Right;
+    }
+    if (data[0] == 2)
+    {
+        return Direction::Down;
+    }
+    if (data[0] == 3)
+    {
+        return Direction::Left;
+    }
+};
+
 
 void handle_message_from_server(char data[], std::size_t& length)
 {
@@ -51,10 +268,13 @@ void udp_server(boost::asio::io_context& io_context, std::string address, unsign
     boost::asio::ip::udp::udp::resolver resolver_sending(io_context);
     boost::asio::ip::udp::udp::endpoint endpoint_listening = *(resolver_listening.resolve(address, std::to_string(port_listening)));
     boost::asio::ip::udp::udp::endpoint endpoint_sending = *(resolver_sending.resolve(address, std::to_string(port_sending)));
+    fprintf(stderr, "endpointy listening i sending to:\n");
+    std::cerr << endpoint_listening << std::endl;
+    std::cerr << endpoint_sending << std::endl;
     boost::asio::ip::udp::udp::socket sock_listening(io_context, endpoint_listening);
     boost::asio::ip::udp::udp::socket sock_sending(io_context, endpoint_sending);
-    /*boost::asio::ip::udp::udp::socket sock_listening(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_listening));
-    boost::asio::ip::udp::udp::socket sock_sending(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_sending));*/
+    /*boost::asio::ip::udp::udp::socket sock_listening(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_listening));*/
+    /*boost::asio::ip::udp::udp::socket sock_sending(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_sending));*/
     for (;;)
     {
         char data[max_length];
@@ -62,7 +282,9 @@ void udp_server(boost::asio::io_context& io_context, std::string address, unsign
         size_t length = sock_listening.receive_from(
             boost::asio::buffer(data, max_length), sender_endpoint);
         handle_message_from_gui(data, length);
-        sock_sending.send_to(boost::asio::buffer(data, length), sender_endpoint);
+        //sock_listening.send_to(boost::asio::buffer(data, length), sender_endpoint); // tylko do debugu!!!
+        sock_sending.send_to(boost::asio::buffer(data, length), endpoint_sending);
+        fprintf(stderr, "wyslane\n");
     }
 }
 
@@ -98,6 +320,8 @@ void tcp_server(boost::asio::io_context& io_context, std::string address, unsign
     fprintf(stderr, "witamy w serwerze tcp\n");
     boost::asio::ip::tcp::tcp::resolver resolver(io_context);
     boost::asio::ip::tcp::tcp::endpoint endpoint = *(resolver.resolve(address, std::to_string(port)));
+    fprintf(stderr, "tcp endpoint to:\n");
+    std::cerr << endpoint << std::endl;
     //boost::asio::ip::tcp::tcp::acceptor a(io_context, boost::asio::ip::tcp::tcp::endpoint(boost::asio::ip::tcp::tcp::v6(), port));
     boost::asio::ip::tcp::tcp::acceptor a(io_context, boost::asio::ip::tcp::tcp::endpoint(endpoint));
     for (;;)
@@ -106,7 +330,6 @@ void tcp_server(boost::asio::io_context& io_context, std::string address, unsign
     }
 }
 
-void debug_1() {}
 
 int main(int argc, char *argv[])
 {
@@ -162,7 +385,7 @@ int main(int argc, char *argv[])
 
     if (parameter_map.count("port"))
     {
-        port_server = parameter_map["port"].as<uint16_t>();
+        port_listening_gui = parameter_map["port"].as<uint16_t>();
     }
     else
     {
@@ -187,17 +410,16 @@ int main(int argc, char *argv[])
    
     try
     {
-        //boost::asio::io_context io_context_udp;
+        fprintf(stderr, "port listening to %d a sending to %d\n", port_listening_gui, port_sending_gui);
+        boost::asio::io_context io_context_udp;
         boost::asio::io_context io_context_tcp;
 
-        std::thread debug_2(debug_1);
-        debug_2.detach();
         std::thread udp_thread([gui_host_address, port_listening_gui, port_sending_gui]()
             {
                 boost::asio::io_context udp_io_context;
                 udp_server(udp_io_context, gui_host_address, port_listening_gui, port_sending_gui);
             });
-        udp_thread.detach();
+        
 
         //std::thread udp_thread(udp_server, io_context_udp, port_listening_gui, port_sending_gui);
 
@@ -206,7 +428,9 @@ int main(int argc, char *argv[])
                 boost::asio::io_context io_context_tcp;
                 tcp_server(io_context_tcp, server_host_address, port_server); 
             });
-        tcp_thread.detach();
+
+        udp_thread.join();
+        tcp_thread.join();
 
         //std::thread tcp_thread(tcp_server, io_context_tcp, port_server);
     }
