@@ -16,19 +16,15 @@ endif ()
 
 set(CMAKE_CXX_STANDARD 14)
 
-#add_executable(boost_smieci_testowe
-        #boost_smieci_testowe.cpp
-        #boost_smieci_testowe.hpp)
-
-add_executable(client
-        client.cpp
+add_executable(robots-client
+        robots-client.cpp
         )
 
-target_link_libraries(client ${Boost_LIBRARIES} Threads::Threads)
+target_link_libraries(robots-client ${Boost_LIBRARIES} Threads::Threads)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 #target_link_libraries(client PRIVATE Threads::Threads)
 
 find_package(Boost 1.40 COMPONENTS program_options REQUIRED)
-target_link_libraries(client Boost::program_options Threads::Threads)
+target_link_libraries(robots-client Boost::program_options Threads::Threads)
