@@ -8,62 +8,71 @@
 #include <vector>
 #include <map>
 
-size_t max_length = 65536;
-int64_t PORT_MAX = 65536;
-size_t len_of_sizetype = 4;
-size_t byte_size = 256;
+// anonimowa przestrzeń nazw 
+namespace { 
+
+
+const size_t MAX_LENGTH = 65536; // maksymalna długość datagramu
+const int64_t PORT_MAX = 65536; // maksymalny poprawny numer portu
+const size_t LEN_OF_SIZETYPE = 4; 
+// długość zapisu długości stringa, listy lub mapy
+const size_t BYTE_SIZE = 256; // maksymalna wartość liczby jednobajtowej
 
 
 typedef uint32_t BombId;
 typedef uint8_t PlayerId;
 typedef uint32_t Score;
 
+/* Deserializuje liczbę o rozmiarze size. */
 size_t deserialize_number(char data[], size_t size)
 {
     size_t res = 0;
     for (size_t i = 0; i < size; i++)
     {
-        res *= byte_size;
+        res *= BYTE_SIZE;
         res += data[size - i - 1];       
     }
     return res;
 }
 
+/* Serializuje numer o rozmiarze size do tablicy data. */
 void serialize_number(char data[], size_t number, size_t size)
 {
     for (size_t i = 0; i < size; i++)
     {
-        data[size - i - 1] = number % byte_size;
-        number /= byte_size;       
+        data[size - i - 1] = number % BYTE_SIZE;
+        number /= BYTE_SIZE;       
     }
 }
 
-
+/* Serializuje string s do tablicy data.
+Zwracana wartość to długość całego zapisu stringa. */
 size_t serialize_string(char data[], std::string s)
 {
     size_t len = s.length();
-    serialize_number(data, len, len_of_sizetype);
-    size_t pos = len_of_sizetype;
+    serialize_number(data, len, LEN_OF_SIZETYPE);
+    size_t pos = LEN_OF_SIZETYPE;
     for (int i = 0; i < len; i++)
     {
         data[pos + i] = s[i];
         
     }
-    return len_of_sizetype + len;
+    return LEN_OF_SIZETYPE + len;
 }
 
+/* Deserializuje string do tablicy data,
+w zmiennej pos zapisuje pozycję po nim. */
 std::string deserialize_string(char data[], size_t& pos)
 {
-    size_t len = deserialize_number(data, len_of_sizetype);
+    size_t len = deserialize_number(data, LEN_OF_SIZETYPE);
     std::string s;
     for (int i = 0; i < len; i++)
     {
-        s = s + char(data[i + len_of_sizetype]);
+        s = s + char(data[i + LEN_OF_SIZETYPE]);
     }
-    pos = len_of_sizetype + len;
+    pos = LEN_OF_SIZETYPE + len;
     return s;
 }
-
 
 
 enum class GameStateType
@@ -80,6 +89,7 @@ enum class Direction
     Left
 };
 
+/* Serializuje kierunek. Zwraca długość zapisu. */
 size_t serialize_direction(Direction direction, char data[])
 {
     switch(direction)
@@ -110,6 +120,7 @@ size_t serialize_direction(Direction direction, char data[])
     return 1;
 }
 
+/* Deserializuje kierunek. */
 Direction deserialize_direction(char data[])
 {
     Direction d;
@@ -144,19 +155,22 @@ Direction deserialize_direction(char data[])
 
 class Position
 {
-public:
+    public:
+
     uint16_t x;
     uint16_t y;
 };
 
 class Player
 {
-public:
+    public:
+
     std::string name;
     std::string address;
     Position position;
 };
-
+/* Deserializuje pole player.
+Do zmiennej len zapisuje długość zapisu. */
 Player deserialize_player(char data[], size_t& len)
 {
     Player p;
@@ -171,18 +185,20 @@ Player deserialize_player(char data[], size_t& len)
 
 class Bomb
 {
-public:
+    public:
+
     BombId id;
     Position position;
     uint16_t timer;
 };
 
 
-// tworzymy ją jak otrzymamy hello od serwera
-// tu przechowujemy dane o aktualnej grze
+/* Klasa służy do przechowywania aktualnych informacji o grze.
+Jest tworzona gdy otrzymamy Hello. */
 class Game 
 {
     public:
+
     GameStateType game_state; // lobby lub game
     std::string server_name;
     uint8_t players_count;
@@ -197,12 +213,15 @@ class Game
     std::vector<Position> blocks;
 };
 
-// tworzymy event, żeby było wygodniej, zmieniamy nim grę
-// a potem go usuwamy, żeby nie zaśmiecać
+Game current_game; // tu przechowujemy informacje o obecnej grze
+
+
+/* Po użyciu obiekt tej klasy jest usuwany. */
 class Event
 {
     public:
     Event() {}
+
     // zmienia stan gry zgodnie z otrzymanym eventem
     virtual void save_event_to_game(Game& game) {};
 };
@@ -210,23 +229,27 @@ class Event
 class BombPlaced : public Event
 {
     public:
+
     BombId id;
     Position position;
     void save_event_to_game(Game& game)
     {
-        // idk, ale chyba nic się nie dzieje, bo nie musimy pamiętać, gdzie są bomby jako klient? Wgl po co jest ten komunikat? 
+        /* Nic się nie dzieje -
+        jako klient nie musimy pamiętać, gdzie są bomby. */
     }
 };
 
 class BombExploded : public Event
 {
     public:
+
     BombId id;
     std::vector<PlayerId> robots_destroyed;
 
     void save_event_to_game(Game& game)
     {
-        // usuwamy z listy zabitych graczy bo i tak w nowej rozgrywce dostaniemy nową listę graczy
+        /* Usuwamy z listy zabitych graczy -  
+        w nowej rozgrywce dostaniemy nową listę. */
         for (auto id: robots_destroyed)
         {
             game.players.erase(id);
@@ -237,9 +260,11 @@ class BombExploded : public Event
 class PlayerMoved : public Event
 {
     public:
+
     PlayerId id;
     Position position;
 
+    /* Zmiana pozycji pojedynczego gracza. */
     void save_event_to_game(Game& game)
     {
         game.players[id].position = this->position;
@@ -248,8 +273,11 @@ class PlayerMoved : public Event
 
 class BlockPlaced : public Event
 {
+    public:
+
     Position position;
     
+    /* Zapisanie położenia bloku. */
     void save_event_to_game(Game& game)
     {
         game.blocks.push_back(this->position);
@@ -264,9 +292,11 @@ enum class ClientMessageType
     Move
 };
 
-// usuwamy ten obiekt po użyciu, on jest tylko dla elegancji
-class ClientMessage // client to server
+// Ten obiekt też jest usuwany po użyciu. 
+class ClientMessage
 {
+    public:
+
     ClientMessageType type;
     Direction direction; // jeśli to move
 
@@ -304,7 +334,9 @@ class ClientMessage // client to server
 class ServerMessage
 {
     public:
+    ServerMessage(char data[]) {} 
     
+    /* Wprowadza do gry zmiany wynikające z otrzymanej wiadomości. */
     virtual void save_to_game(Game& game);
 };
 
@@ -321,14 +353,16 @@ class Hello : public ServerMessage
     uint16_t bomb_timer;
     
     // konstruktor deserializujący
-    Hello(char data[])
-    {
+    Hello(char data[]) : ServerMessage(data)
+    {   
+    
         size_t pos = 0;
         size_t len_of_string;
         server_name = deserialize_string(&(data[pos]), len_of_string);
         pos += len_of_string;
 
-        players_count = (uint8_t)deserialize_number(&(data[pos]), sizeof(players_count));
+        players_count = 
+            (uint8_t)deserialize_number(&(data[pos]), sizeof(players_count));
         pos += sizeof(players_count);
 
         size_x = (uint16_t)deserialize_number(&(data[pos]), sizeof(size_x));
@@ -340,10 +374,12 @@ class Hello : public ServerMessage
         game_length = (uint16_t)deserialize_number(&(data[pos]), sizeof(game_length));
         pos += sizeof(game_length);
 
-        explosion_radius = (uint16_t)deserialize_number(&(data[pos]), sizeof(explosion_radius));
+        explosion_radius = 
+           (uint16_t)deserialize_number(&(data[pos]), sizeof(explosion_radius));
         pos += sizeof(explosion_radius);
 
-        bomb_timer = (uint16_t)deserialize_number(&(data[pos]), sizeof(bomb_timer));
+        bomb_timer = 
+            (uint16_t)deserialize_number(&(data[pos]), sizeof(bomb_timer));
         pos += sizeof(bomb_timer);
     }
 
@@ -370,6 +406,8 @@ enum class InputMessageType
 
 class InputMessage
 {
+    public:
+
     InputMessageType type;
     Direction direction; // jeśli to move
 
@@ -400,8 +438,9 @@ class AcceptedPlayer : public ServerMessage
     Player player;
     
     // konstruktor deserializujący
-    AcceptedPlayer(char data[])
+    AcceptedPlayer(char data[]) : ServerMessage(data)
     {
+        
         size_t pos = 0;
 
         id = (PlayerId)deserialize_number(&(data[pos]), sizeof(id));
@@ -413,8 +452,7 @@ class AcceptedPlayer : public ServerMessage
 
     void save_to_game(Game& game)
     {
-        //game.players[this->id] = this->player;
-        game.players_count++; // nie musimy na razie mieć playersów, dostaniemy ich i tak w GameStarted
+        game.players_count++; 
     }
 };
 
@@ -426,16 +464,19 @@ class GameStarted : public ServerMessage
     std::map<PlayerId, Player> players;
     
     // konstruktor deserializujący
-    GameStarted(char data[])
+    GameStarted(char data[]) : ServerMessage(data)
     {
+
         size_t pos = 0;
 
-        this->players_count = (uint32_t)deserialize_number(&(data[pos]), sizeof(uint32_t));
-        pos += len_of_sizetype;
+        this->players_count = 
+            (uint32_t)deserialize_number(&(data[pos]), sizeof(uint32_t));
+        pos += LEN_OF_SIZETYPE;
 
         for (size_t i = 0; i < this->players_count; i++)
         {
-            PlayerId id = (PlayerId)deserialize_number(&(data[pos]), sizeof(PlayerId));
+            PlayerId id = 
+                (PlayerId)deserialize_number(&(data[pos]), sizeof(PlayerId));
             pos += sizeof(PlayerId);
             size_t size_of_player;
             Player p = deserialize_player(&(data[pos]), size_of_player);
@@ -458,16 +499,19 @@ class GameEnded : public ServerMessage
     std::map<PlayerId, Score> scores;
     
     // konstruktor deserializujący
-    GameEnded(char data[])
+    GameEnded(char data[]) : ServerMessage(data)
     {
+        
         size_t pos = 0;
 
-        this->players_count = (uint32_t)deserialize_number(&(data[pos]), sizeof(uint32_t));
-        pos += len_of_sizetype;
+        this->players_count = 
+            (uint32_t)deserialize_number(&(data[pos]), sizeof(uint32_t));
+        pos += LEN_OF_SIZETYPE;
 
         for (size_t i = 0; i < this->players_count; i++)
         {
-            PlayerId id = (PlayerId)deserialize_number(&(data[pos]), sizeof(PlayerId));
+            PlayerId id = 
+                (PlayerId)deserialize_number(&(data[pos]), sizeof(PlayerId));
             pos += sizeof(PlayerId);
             Score s = (Score)deserialize_number(&(data[pos]), sizeof(Score));
             pos += sizeof(Score);
@@ -481,10 +525,12 @@ class GameEnded : public ServerMessage
     }
 };
 
+/* Deserializuje event i wypełnia jego pozostałe pola 
+(które nie są przekazane w komunikacie). */
 Event deserialize_and_fill_event(char data[], size_t& read_size)
 {
     PlayerMoved e;
-    //TODO  
+    // nie zdążyłam tego zrobić :( 
     return e;
 }
 
@@ -496,12 +542,13 @@ class Turn : public ServerMessage
     std::vector<Event> events;
     
     // konstruktor deserializujący
-    Turn(char data[])
+    Turn(char data[]) : ServerMessage(data)
     {
         size_t pos = 0;
 
-        this->events_count = (uint32_t)deserialize_number(&(data[pos]), sizeof(uint32_t));
-        pos += len_of_sizetype;
+        this->events_count = 
+            (uint32_t)deserialize_number(&(data[pos]), sizeof(uint32_t));
+        pos += LEN_OF_SIZETYPE;
 
         for (size_t i = 0; i < this->events_count; i++)
         {
@@ -521,12 +568,14 @@ class Turn : public ServerMessage
     }
 };
 
+/* Serializuje mapę. */
 size_t serialize_map(std::map<PlayerId, Player> map, char data[])
 {
-    //TODO
+    // nie zdążyłam tego zrobić :(
     return 0;
 }
 
+/* Obiekt tymczasowy reprezentujący wiadomość do GUI. */
 class DrawMessage
 {
     virtual size_t serialize(char data[], Game& game);
@@ -539,7 +588,11 @@ class DrawLobby : public DrawMessage
         size_t pos = 0;
         pos += serialize_string(data, game.server_name);
         
-        serialize_number(&(data[pos]), game.players_count, sizeof(game.players_count));
+        serialize_number(
+            &(data[pos]), 
+            game.players_count, 
+            sizeof(game.players_count));
+
         pos += sizeof(game.players_count);
 
         serialize_number(&(data[pos]), game.size_x, sizeof(game.size_x));
@@ -551,10 +604,18 @@ class DrawLobby : public DrawMessage
         serialize_number(&(data[pos]), game.game_length, sizeof(game.game_length));
         pos += sizeof(game.game_length);
 
-        serialize_number(&(data[pos]), game.explosion_radius, sizeof(game.explosion_radius));
+        serialize_number(
+            &(data[pos]), 
+            game.explosion_radius, 
+            sizeof(game.explosion_radius));
+
         pos += sizeof(game.explosion_radius);
 
-        serialize_number(&(data[pos]), game.bomb_timer, sizeof(game.bomb_timer));
+        serialize_number(
+            &(data[pos]), 
+            game.bomb_timer, 
+            sizeof(game.bomb_timer));
+
         pos += sizeof(game.bomb_timer);
 
         pos += serialize_map(game.players, &(data[pos]));
@@ -576,7 +637,11 @@ class DrawGame : public DrawMessage
         serialize_number(&(data[pos]), game.size_y, sizeof(game.size_y));
         pos += sizeof(game.size_y);
 
-        serialize_number(&(data[pos]), game.game_length, sizeof(game.game_length));
+        serialize_number(
+            &(data[pos]), 
+            game.game_length, 
+            sizeof(game.game_length));
+
         pos += sizeof(game.game_length);
 
         serialize_number(&(data[pos]), game.turn, sizeof(game.turn));
@@ -588,41 +653,42 @@ class DrawGame : public DrawMessage
     }
 };
 
-
-
-
+/* Funkcja przetwarza wiadomość od serwera.
+Potem czeka aż będzie potrzeba odesłania mu czegoś,
+Wtedy zapisuje to w buforze data i się kończy. */
 void handle_message_from_server(char data[], std::size_t& length)
 {
-    fprintf(stderr, "tcp dostalismy %d bytow\n", length);
-    std::cerr << data << std::endl;
-    // tu czytamy co nam wysłał serwer 
-    // zastanawiamy się nad tym 
-    // i wklejamy do data odpowiedź jak będziemy chcieli żeby ją wysłać to zmieniamy length i data i kończymy funkcję
-    // chyba czekamy na gui też tutaj 
-    // tu będzie aktywne czekanie na gui
+    // nie zdążyłam tego zrobić :( 
+    // ale tutaj deserializujemy data do ServerMessage
+    // i wywołujemy na nim change_to_game();
+    // i triggerujemy wysłanie wiadomości do gui jeśli jest taka potrzeba
+    // następnie czekamy na trigger do wysłania wiadomości do serwera
+    // i wtedy zapisujemy ją do data
 }
 
+/* Funkcja przetwarza wiadomość od GUI.
+Potem czeka aż będzie potrzeba odesłania mu czegoś,
+Wtedy zapisuje to w buforze data i się kończy. */
 void handle_message_from_gui(char data[], std::size_t& length)
 {
-    fprintf(stderr, "udp dostalismy %d bytow\n", length);
-    std::cerr << data << std::endl;
-    // tu czytamy co nam wysłało gui 
-    // zastanawiamy się nad tym 
-    // i wklejamy do data odpowiedź jak będziemy chcieli żeby ją wysłać to zmieniamy length i data i kończymy funkcję
-    // aktywne czekanie na serwer
+    // analogicznie jak funkcja wyżej, nie zdążyłam
 }
 
-void udp_server(boost::asio::io_context& io_context, std::string address, unsigned short port_listening, unsigned short port_sending)
+/* Funkcja nasłuchująca w pętli komunikatów od GUI. */
+void udp_server(boost::asio::io_context& io_context, std::string address,
+    unsigned short port_listening, unsigned short port_sending)
 {
-    fprintf(stderr, "witamy w serwerze udp\n");
     boost::asio::ip::udp::udp::resolver resolver_listening(io_context);
     boost::asio::ip::udp::udp::resolver resolver_sending(io_context);
     boost::asio::ip::udp::udp::endpoint endpoint_listening;
     boost::asio::ip::udp::udp::endpoint endpoint_sending;
+
     try 
     {
-        endpoint_listening = *(resolver_listening.resolve(address, std::to_string(port_listening)));
-        endpoint_sending = *(resolver_sending.resolve(address, std::to_string(port_sending)));
+        endpoint_listening = 
+            *(resolver_listening.resolve(address, std::to_string(port_listening)));
+        endpoint_sending = 
+            *(resolver_sending.resolve(address, std::to_string(port_sending)));
     }
     catch (std::exception& e)
     {
@@ -631,42 +697,39 @@ void udp_server(boost::asio::io_context& io_context, std::string address, unsign
         exit(1);
     }
     
-    fprintf(stderr, "endpointy listening i sending to:\n");
-    std::cerr << endpoint_listening << std::endl;
-    std::cerr << endpoint_sending << std::endl;
-    boost::asio::ip::udp::udp::socket sock_listening(io_context, endpoint_listening);
-    boost::asio::ip::udp::udp::socket sock_sending(io_context, endpoint_sending);
-    /*boost::asio::ip::udp::udp::socket sock_listening(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_listening));*/
-    /*boost::asio::ip::udp::udp::socket sock_sending(io_context, boost::asio::ip::udp::udp::endpoint(boost::asio::ip::udp::udp::v6(), port_sending));*/
+    
+    boost::asio::ip::udp::udp::socket 
+        sock_listening(io_context, endpoint_listening);
+    boost::asio::ip::udp::udp::socket 
+        sock_sending(io_context, endpoint_sending);
+
     for (;;)
     {
-        char data[max_length];
+        char data[MAX_LENGTH];
         boost::asio::ip::udp::udp::endpoint sender_endpoint;
         size_t length = sock_listening.receive_from(
-            boost::asio::buffer(data, max_length), sender_endpoint);
+            boost::asio::buffer(data, MAX_LENGTH), sender_endpoint);
         handle_message_from_gui(data, length);
-        //sock_listening.send_to(boost::asio::buffer(data, length), sender_endpoint); // tylko do debugu!!!
         sock_sending.send_to(boost::asio::buffer(data, length), endpoint_sending);
-        fprintf(stderr, "wyslane\n");
     }
 }
-
+/* Pojedyncze połączenie po TCP. */
 void session(boost::asio::ip::tcp::tcp::socket sock)
 {
-    fprintf(stderr, "witamy w sesji tcp\n");
     try
     {
         sock.set_option(boost::asio::ip::tcp::tcp::no_delay(true));
         for (;;)
         {
-            char data[max_length];
+            char data[MAX_LENGTH];
 
             boost::system::error_code error;
-            size_t length = sock.read_some(boost::asio::buffer(data, max_length), error);
+            size_t length = 
+                sock.read_some(boost::asio::buffer(data, MAX_LENGTH), error);
             if (error == boost::asio::error::eof)
-                break; // Connection closed cleanly by peer.
+                break; // połączenie zamknięte
             else if (error)
-                throw boost::system::system_error(error); // Some other error.
+                throw boost::system::system_error(error);
 
             handle_message_from_server(data, length);
             boost::asio::write(sock, boost::asio::buffer(data, length));
@@ -678,9 +741,10 @@ void session(boost::asio::ip::tcp::tcp::socket sock)
     }
 }
 
-void tcp_server(boost::asio::io_context& io_context, std::string address, unsigned short port)
+/* Funkcja obsługująca połączenie z serwerem. */
+void tcp_server(boost::asio::io_context& io_context, std::string address,
+    unsigned short port)
 {
-    fprintf(stderr, "witamy w serwerze tcp\n");
     boost::asio::ip::tcp::tcp::resolver resolver(io_context);
     boost::asio::ip::tcp::tcp::endpoint endpoint;
     try 
@@ -693,15 +757,17 @@ void tcp_server(boost::asio::io_context& io_context, std::string address, unsign
         std::cerr << "Resolving exception: wrong server address: " << e.what() << "\n";
         exit(1);
     }
-    fprintf(stderr, "tcp endpoint to:\n");
-    std::cerr << endpoint << std::endl;
-    //boost::asio::ip::tcp::tcp::acceptor a(io_context, boost::asio::ip::tcp::tcp::endpoint(boost::asio::ip::tcp::tcp::v6(), port));
-    boost::asio::ip::tcp::tcp::acceptor a(io_context, boost::asio::ip::tcp::tcp::endpoint(endpoint));
+
+    boost::asio::ip::tcp::tcp::acceptor 
+        a(io_context, boost::asio::ip::tcp::tcp::endpoint(endpoint));
+
     for (;;)
     {
         std::thread(session, a.accept()).detach();
     }
 }
+
+} // namespace
 
 
 int main(int argc, char *argv[])
@@ -717,12 +783,19 @@ int main(int argc, char *argv[])
      
     description.add_options()
         ("help,h", "Get help")
-        ("gui-address,d", boost::program_options::value<std::string>(), "Gui address")
-        ("player-name,n", boost::program_options::value<std::string>(), "Player name")
-        ("port,p", boost::program_options::value<int64_t>(), "Port for listening gui")
-        ("server-address,s", boost::program_options::value<std::string>(), "Server address");
+        ("gui-address,d", 
+            boost::program_options::value<std::string>(), "Gui address")
+        ("player-name,n", 
+            boost::program_options::value<std::string>(), "Player name")
+        ("port,p", 
+            boost::program_options::value<int64_t>(), "Port for listening gui")
+        ("server-address,s", 
+            boost::program_options::value<std::string>(), "Server address");
 
-        boost::program_options::store(boost::program_options::command_line_parser(argc, argv).options(description).run(), parameter_map);
+        boost::program_options::store(
+            boost::program_options::command_line_parser(argc, argv).options(description).run(), 
+            parameter_map);
+
     boost::program_options::notify(parameter_map);
 
     if (parameter_map.count("help"))
@@ -733,7 +806,8 @@ int main(int argc, char *argv[])
 
     if (parameter_map.count("gui-address"))
     {
-        std::string gui_address = parameter_map["gui-address"].as<std::string>();
+        std::string gui_address = 
+            parameter_map["gui-address"].as<std::string>();
         size_t last_colon_pos = gui_address.rfind(':');
         std::string host_part = gui_address.substr(0, last_colon_pos);
         std::string port_part = gui_address.substr(last_colon_pos + 1);
@@ -781,7 +855,8 @@ int main(int argc, char *argv[])
 
     if (parameter_map.count("server-address"))
     {
-        std::string server_address = parameter_map["server-address"].as<std::string>();
+        std::string server_address = 
+            parameter_map["server-address"].as<std::string>();
         size_t last_colon_pos = server_address.rfind(':');
         std::string host_part = server_address.substr(0, last_colon_pos);
         std::string port_part = server_address.substr(last_colon_pos + 1);
@@ -804,20 +879,19 @@ int main(int argc, char *argv[])
    
     try
     {
-        fprintf(stderr, "port listening to %d a sending to %d\n", port_listening_gui, port_sending_gui);
         boost::asio::io_context io_context_udp;
         boost::asio::io_context io_context_tcp;
 
-        std::thread udp_thread([gui_host_address, port_listening_gui, port_sending_gui]()
+        std::thread 
+            udp_thread([gui_host_address, port_listening_gui, port_sending_gui]()
             {
                 boost::asio::io_context udp_io_context;
                 udp_server(udp_io_context, gui_host_address, port_listening_gui, port_sending_gui);
             });
         
 
-        //std::thread udp_thread(udp_server, io_context_udp, port_listening_gui, port_sending_gui);
-
-        std::thread tcp_thread([port_server, server_host_address]() 
+        std::thread 
+            tcp_thread([port_server, server_host_address]() 
             {
                 boost::asio::io_context io_context_tcp;
                 tcp_server(io_context_tcp, server_host_address, port_server); 
@@ -825,12 +899,9 @@ int main(int argc, char *argv[])
 
         udp_thread.join();
         tcp_thread.join();
-
-        //std::thread tcp_thread(tcp_server, io_context_tcp, port_server);
     }
     catch (std::exception& e)
     {
-        fprintf(stderr, "wypisujemy wyjatek\n");
         std::cerr << e.what() << std::endl;
     }
 
